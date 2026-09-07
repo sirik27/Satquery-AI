@@ -20,6 +20,7 @@ import LiveMapExplorer from '../components/LiveMapExplorer';
 import GrowthHUD from '../components/GrowthHUD';
 import FileUploader from '../components/FileUploader';
 import GroundedChatbot from '../components/GroundedChatbot';
+import AnalyticsView from '../components/AnalyticsView';
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
@@ -231,19 +232,23 @@ export default function Dashboard() {
         {/* Growth HUD */}
         <GrowthHUD metrics={metrics} temporalMetrics={temporalMetrics} />
 
-        {/* Map Explorer */}
-        <LiveMapExplorer
-          layers={layers}
-          pastLayers={pastLayers}
-          pastImageBase64={pastImageBase64}
-          currentImageBase64={currentImageBase64}
-          scanning={scanning}
-          onScan={handleScan}
-          onTemporalScan={handleTemporalScan}
-          highlightFeatureIds={highlightFeatureIds}
-          visibleLayers={visibleLayers}
-          onToggleLayer={handleToggleLayer}
-        />
+        {/* Content Views: Map Explorer vs Analytics */}
+        {activeNav === 'analytics' ? (
+          <AnalyticsView metrics={metrics} temporalMetrics={temporalMetrics} />
+        ) : (
+          <LiveMapExplorer
+            layers={layers}
+            pastLayers={pastLayers}
+            pastImageBase64={pastImageBase64}
+            currentImageBase64={currentImageBase64}
+            scanning={scanning}
+            onScan={handleScan}
+            onTemporalScan={handleTemporalScan}
+            highlightFeatureIds={highlightFeatureIds}
+            visibleLayers={visibleLayers}
+            onToggleLayer={handleToggleLayer}
+          />
+        )}
 
         {/* Grounded Chatbot */}
         <GroundedChatbot
