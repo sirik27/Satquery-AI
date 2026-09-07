@@ -55,12 +55,12 @@ export default function GrowthHUD({ metrics, temporalMetrics }) {
   return (
     <div className="metrics-row" id="growth-hud">
       <MetricCard
-        label="Detections"
-        value={detection_count}
+        label="Buildings"
+        value={built_up_count}
         icon={Building2}
-        color="#2563eb"
-        change={det?.net_change}
-        changeLabel={det ? `${det.net_change >= 0 ? '+' : ''}${det.net_change} since 2021` : null}
+        color="#8b5cf6"
+        change={built?.concrete_expansion_sqm}
+        changeLabel={built ? `${built.concrete_expansion_sqm >= 0 ? '+' : ''}${built.concrete_expansion_sqm.toFixed(0)} m²` : null}
       />
       <MetricCard
         label="Vegetation"
@@ -77,18 +77,18 @@ export default function GrowthHUD({ metrics, temporalMetrics }) {
         color="#0ea5e9"
       />
       <MetricCard
-        label="Built-up"
-        value={built_up_count}
-        icon={Building2}
-        color="#8b5cf6"
-        change={built?.concrete_expansion_sqm}
-        changeLabel={built ? `${built.concrete_expansion_sqm >= 0 ? '+' : ''}${built.concrete_expansion_sqm.toFixed(0)} m²` : null}
-      />
-      <MetricCard
         label="Roads"
         value={road_count}
         icon={Route}
         color="#f59e0b"
+      />
+      <MetricCard
+        label="Objects"
+        value={detection_count}
+        icon={Building2}
+        color="#ef4444"
+        change={det?.net_change}
+        changeLabel={det ? `${det.net_change >= 0 ? '+' : ''}${det.net_change} since 2021` : null}
       />
     </div>
   );
