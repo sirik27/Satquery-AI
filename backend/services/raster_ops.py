@@ -134,19 +134,20 @@ def compute_vegetation_percentage(image: np.ndarray, threshold: float = 0.05) ->
 
 def compute_water_mask(image: np.ndarray) -> np.ndarray:
     """
-    Create a binary water mask using adaptive band ratio and saturation analysis.
-    Water in satellite RGB has high blue/green ratio and low overall saturation/red.
+    Create a highly precise binary water mask using NDWI (Normalized Difference Water Index).
+    Strict blue dominance and low brightness to prevent tree shadows or dark roofs from false positives.
     """
     img = image.astype(np.float32)
     r, g, b = img[:, :, 0], img[:, :, 1], img[:, :, 2]
 
-    # Water ratio index
+    # Blue vs Red ratio & Green vs Red ratio
     blue_ratio = (b - r) / (b + r + 1e-10)
     green_ratio = (g - r) / (g + r + 1e-10)
     brightness = (r + g + b) / 3.0
 
-    # Water has strong blue/green predominance and low brightness/reflectance
-    water_mask = (blue_ratio > 0.05) & (green_ratio > 0.0) & (brightness < 160)
+    # True water bodies have high blue dominance, low red, low overall brightness, and minimal green GLI
+    gli = compute_gli(image)
+    water_mask = (blue_ratio > 0.15) & (b > g) & (brightness < 110) & (gli < 0.01)
 
     return water_mask
 
@@ -154,7 +155,7 @@ def compute_water_mask(image: np.ndarray) -> np.ndarray:
 def compute_built_up_mask(image: np.ndarray) -> np.ndarray:
     """
     Create a binary built-up/building mask.
-    Built-up areas (roofs, concrete, structures) have high variance, high brightness, and neutral color.
+    Built-up areas (roofs, concrete, structures) have high variance, neutral color, and low vegetation GLI.
     """
     img = image.astype(np.float32)
     r, g, b = img[:, :, 0], img[:, :, 1], img[:, :, 2]
@@ -162,8 +163,8 @@ def compute_built_up_mask(image: np.ndarray) -> np.ndarray:
     brightness = (r + g + b) / 3.0
     gli = compute_gli(image)
 
-    # Brightness above average and low vegetation GLI
-    built_mask = (brightness > 90) & (gli < 0.08) & (brightness < 245)
+    # Buildings & roof structures: non-vegetated pixels with moderate to high brightness
+    built_mask = (brightness > 75) & (gli < 0.04) & (brightness < 250)
 
     return built_mask
 

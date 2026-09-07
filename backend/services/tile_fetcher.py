@@ -33,8 +33,8 @@ ESRI_WAYBACK_URL = (
     "World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/45009/{z}/{y}/{x}"
 )
 ESRI_WAYBACK_ALT_URL = (
-    "https://server.arcgisonline.com/ArcGIS/rest/services/"
-    "World_Imagery/MapServer/tile/{z}/{y}/{x}"
+    "https://wayback.maptiles.arcgis.com/arcgis/rest/services/"
+    "World_Imagery/MapServer/tile/45009/{z}/{y}/{x}"
 )
 
 TILE_SIZE = 256

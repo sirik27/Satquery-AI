@@ -51,7 +51,7 @@ class ObjectDetector:
         self.all_class_names = self.model.names if hasattr(self.model, "names") else {}
 
     def detect(
-        self, image: np.ndarray, transform: dict, confidence: float = 0.25
+        self, image: np.ndarray, transform: dict, confidence: float = 0.15
     ) -> dict:
         """
         Run YOLOv8 inference on an image and convert detections to GeoJSON.
