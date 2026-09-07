@@ -1,0 +1,11 @@
+{
+  "name": "satquery-ai-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "cd frontend && npm install && npm run build",
+    "preview": "vite preview"
+  }
+}
