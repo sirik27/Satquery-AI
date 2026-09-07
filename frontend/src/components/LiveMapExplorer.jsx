@@ -263,12 +263,27 @@ export default function LiveMapExplorer({
         onToggleLayer={onToggleLayer}
       />
 
-      {/* Split-screen time labels */}
+      {/* Split-screen time labels & Slider controls */}
       {showSplit && pastImageBase64 && (
-        <>
-          <div className="split-label left">2021 — Wayback</div>
-          <div className="split-label right">2026 — Current</div>
-        </>
+        <div style={{
+          position: 'absolute',
+          top: 16,
+          right: 60,
+          zIndex: 1000,
+          background: 'rgba(15, 23, 42, 0.9)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid rgba(168, 85, 247, 0.4)',
+          borderRadius: '12px',
+          padding: '10px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 16,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+        }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: '#a855f7' }}>⏳ 2021 Wayback</span>
+          <span style={{ fontSize: 12, color: '#64748b' }}>vs</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: '#22c55e' }}>🛰️ 2026 Current</span>
+        </div>
       )}
 
       {/* Scan Controls */}
@@ -320,7 +335,7 @@ export default function LiveMapExplorer({
               }}
             >
               <ArrowLeftRight size={16} />
-              {showSplit ? 'Hide 2021' : 'Show 2021'}
+              {showSplit ? 'Hide 2021 Overlay' : 'Compare 2021 vs 2026'}
             </button>
           )}
         </div>
