@@ -65,8 +65,8 @@ export const api = {
     apiClient.post('/api/v1/scan-viewport', { bbox, zoom }),
 
   // Temporal analysis
-  temporalAnalysis: (bbox, zoom = 15) =>
-    apiClient.post('/api/v1/temporal-analysis', { bbox, zoom }),
+  temporalAnalysis: (bbox, zoom = 15, year = 2021) =>
+    apiClient.post('/api/v1/temporal-analysis', { bbox, zoom, year }),
 
   // Chat
   chat: (message, scanId = null) =>

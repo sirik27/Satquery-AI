@@ -27,15 +27,22 @@ ESRI_CURRENT_URL = (
     "World_Imagery/MapServer/tile/{z}/{y}/{x}"
 )
 
-# Esri Wayback — historical imagery (2021 Wayback archive tile service)
-ESRI_WAYBACK_URL = (
-    "https://wayback.maptiles.arcgis.com/arcgis/rest/services/"
-    "World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/45009/{z}/{y}/{x}"
-)
-ESRI_WAYBACK_ALT_URL = (
-    "https://wayback.maptiles.arcgis.com/arcgis/rest/services/"
-    "World_Imagery/MapServer/tile/45009/{z}/{y}/{x}"
-)
+# Esri Wayback — historical imagery codes for different years
+WAYBACK_YEAR_CODES = {
+    2014: 1258,
+    2015: 1258,
+    2016: 1805,
+    2017: 2500,
+    2018: 2500,
+    2019: 3200,
+    2020: 3200,
+    2021: 45009,
+    2022: 45009,
+    2023: 49000,
+    2024: 52000,
+    2025: 52000,
+    2026: None,
+}
 
 TILE_SIZE = 256
 MAX_TILES_PER_AXIS = 16  # Safety limit to prevent excessive downloads
@@ -93,15 +100,14 @@ def _tile_cache_path(x: int, y: int, z: int, source: str) -> Path:
 
 
 async def fetch_tile(
-    x: int, y: int, z: int, source: str = "current"
+    x: int, y: int, z: int, source: str = "current", year: int = 2021
 ) -> Optional[np.ndarray]:
     """
-    Fetch a single tile image from Esri servers.
+    Fetch a single tile image from Esri servers for a given year.
     Uses local disk cache to avoid redundant downloads.
-    Returns a numpy RGB array or None if the fetch fails.
     """
-    # Check cache first
-    cache_file = _tile_cache_path(x, y, z, source)
+    cache_key = f"{source}_{year}" if source == "wayback" else source
+    cache_file = _tile_cache_path(x, y, z, cache_key)
     if cache_file.exists():
         try:
             img = Image.open(cache_file).convert("RGB")
@@ -109,12 +115,14 @@ async def fetch_tile(
         except Exception:
             cache_file.unlink(missing_ok=True)
 
-    # Select URL template
-    url_template = ESRI_CURRENT_URL if source == "current" else ESRI_WAYBACK_URL
-    url = url_template.format(x=x, y=y, z=z)
+    if source == "wayback" and year in WAYBACK_YEAR_CODES and WAYBACK_YEAR_CODES[year]:
+        code = WAYBACK_YEAR_CODES[year]
+        url = f"https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/{code}/{z}/{y}/{x}"
+    else:
+        url = ESRI_CURRENT_URL.format(x=x, y=y, z=z)
 
     try:
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
             response = await client.get(
                 url,
                 headers={
@@ -122,36 +130,22 @@ async def fetch_tile(
                     "Referer": "https://www.arcgis.com/",
                 },
             )
-            
-            # If wayback tile returns 404, fallback to standard Esri tile
-            if response.status_code != 200 and source == "past":
-                alt_url = ESRI_WAYBACK_ALT_URL.format(x=x, y=y, z=z)
-                response = await client.get(
-                    alt_url,
-                    headers={
-                        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
-                        "Referer": "https://www.arcgis.com/",
-                    },
-                )
+
+            # Fallback if wayback tile fails
+            if response.status_code != 200 and source == "wayback":
+                url_alt = ESRI_CURRENT_URL.format(x=x, y=y, z=z)
+                response = await client.get(url_alt, headers={"Referer": "https://www.arcgis.com/"})
 
             response.raise_for_status()
 
             img = Image.open(io.BytesIO(response.content)).convert("RGB")
             arr = np.array(img)
 
-            # Save to cache
-            try:
-                img.save(cache_file, format="PNG")
-            except Exception as e:
-                logger.warning(f"Failed to cache tile {z}/{x}/{y}: {e}")
-
+            # Cache tile locally
+            img.save(cache_file, "PNG")
             return arr
-
-    except httpx.HTTPStatusError as e:
-        logger.warning(f"Tile fetch HTTP error {e.response.status_code} for {url}")
-        return None
     except Exception as e:
-        logger.error(f"Tile fetch error for {z}/{x}/{y}: {e}")
+        logger.warning(f"Tile fetch failed for {z}/{x}/{y} ({source}/{year}): {e}")
         return None
 
 
@@ -162,6 +156,7 @@ async def fetch_and_stitch_tiles(
     max_lon: float,
     zoom: int,
     source: str = "current",
+    year: int = 2021,
 ) -> Optional[dict]:
     """
     Fetch all tiles covering the bounding box and stitch them into a single image.
@@ -191,7 +186,7 @@ async def fetch_and_stitch_tiles(
 
     for ty in range(min_y, max_y + 1):
         for tx in range(min_x, max_x + 1):
-            tile_img = await fetch_tile(tx, ty, zoom, source)
+            tile_img = await fetch_tile(tx, ty, zoom, source, year)
             if tile_img is not None:
                 row_offset = (ty - min_y) * TILE_SIZE
                 col_offset = (tx - min_x) * TILE_SIZE

@@ -35,6 +35,7 @@ class TemporalAnalysisRequest(BaseModel):
     """Request body for POST /api/v1/temporal-analysis"""
     bbox: list[float] = Field(..., min_length=4, max_length=4)
     zoom: int = Field(default=15, ge=1, le=20)
+    year: int = Field(default=2021, ge=2000, le=2026)
 
 
 class TemporalAnalysisResponse(BaseModel):

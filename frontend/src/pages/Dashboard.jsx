@@ -73,10 +73,10 @@ export default function Dashboard() {
   }, []);
 
   // Handle temporal scan
-  const handleTemporalScan = useCallback(async (bbox, zoom) => {
+  const handleTemporalScan = useCallback(async (bbox, zoom, year = 2021) => {
     setScanning(true);
     try {
-      const response = await api.temporalAnalysis(bbox, zoom);
+      const response = await api.temporalAnalysis(bbox, zoom, year);
       const data = response.data;
 
       if (data.error) {

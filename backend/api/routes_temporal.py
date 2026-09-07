@@ -50,53 +50,73 @@ async def temporal_analysis(
     user: AuthenticatedUser = Depends(get_current_user),
 ):
     """
-    Run temporal analysis comparing 2021 (Wayback) vs 2026 (current) imagery.
-
-    1. Fetches tiles from both time periods
-    2. Runs detection pipeline on both
-    3. Computes structural growth, vegetation change, concrete expansion
-    4. Returns diff metrics + both GeoJSON layers + preview images
+    Run temporal analysis comparing requested historical year (Wayback) vs 2026 (current) imagery.
+    Reuses existing viewport scan cache when available for super-fast execution.
     """
     min_lat, min_lon, max_lat, max_lon = request.bbox
     zoom = request.zoom
+    year = request.year or 2021
 
     logger.info(
         f"Temporal analysis: [{min_lat:.4f}, {min_lon:.4f}, "
-        f"{max_lat:.4f}, {max_lon:.4f}] zoom={zoom}"
+        f"{max_lat:.4f}, {max_lon:.4f}] zoom={zoom} year={year}"
     )
 
-    # Fetch current (2026) tiles
-    current_result = await fetch_and_stitch_tiles(
-        min_lat, min_lon, max_lat, max_lon, zoom, source="current"
-    )
-    if current_result is None:
-        return {"error": "Failed to fetch current satellite imagery."}
+    try:
+        # Check scan store cache for current baseline
+        scan_store = get_scan_store()
+        cached = scan_store.get("latest")
+        current_result = None
 
-    # Fetch past (2021) tiles — if wayback archive unavailable, fallback gracefully to current raster as baseline
-    past_result = await fetch_and_stitch_tiles(
-        min_lat, min_lon, max_lat, max_lon, zoom, source="wayback"
-    )
-    if past_result is None:
-        logger.warning("Wayback tiles unavailable for this location, using current raster as past baseline.")
-        past_result = current_result
+        if cached and "image" in cached and "transform" in cached:
+            c_bounds = cached.get("bounds", {})
+            if (
+                abs(c_bounds.get("min_lat", 0) - min_lat) < 0.01
+                and abs(c_bounds.get("min_lon", 0) - min_lon) < 0.01
+            ):
+                logger.info("Reusing cached scan result for current baseline")
+                current_result = cached
 
-    current_image = current_result["image"]
-    past_image = past_result["image"]
-    current_transform = current_result["transform"]
-    past_transform = past_result["transform"]
+        if current_result is None:
+            current_result = await fetch_and_stitch_tiles(
+                min_lat, min_lon, max_lat, max_lon, zoom, source="current"
+            )
 
-    # Run detection on current imagery
-    detector = get_detector()
-    current_detections = detector.detect(current_image, current_transform)
-    current_vegetation = detect_vegetation_contours(current_image, current_transform)
-    current_water = detect_water_contours(current_image, current_transform)
-    current_built = detect_built_up_contours(current_image, current_transform)
+        if current_result is None:
+            return {"error": "Failed to fetch current satellite imagery."}
 
-    # Run detection on past imagery
-    past_detections = detector.detect(past_image, past_transform)
-    past_vegetation = detect_vegetation_contours(past_image, past_transform)
-    past_water = detect_water_contours(past_image, past_transform)
-    past_built = detect_built_up_contours(past_image, past_transform)
+        # Fetch past tiles for requested year
+        past_result = await fetch_and_stitch_tiles(
+            min_lat, min_lon, max_lat, max_lon, zoom, source="wayback", year=year
+        )
+        if past_result is None:
+            logger.warning(f"Wayback tiles for {year} unavailable, using current raster as baseline.")
+            past_result = current_result
+
+        current_image = current_result["image"]
+        past_image = past_result["image"]
+        current_transform = current_result["transform"]
+        past_transform = past_result["transform"]
+
+        detector = get_detector()
+
+        # Check if current layers already computed in cache
+        if cached and "layers" in cached and current_result is cached:
+            current_detections = cached["layers"].get("detections", {"type": "FeatureCollection", "features": []})
+            current_vegetation = cached["layers"].get("vegetation", {"type": "FeatureCollection", "features": []})
+            current_water = cached["layers"].get("water", {"type": "FeatureCollection", "features": []})
+            current_built = cached["layers"].get("built_up", {"type": "FeatureCollection", "features": []})
+        else:
+            current_detections = detector.detect(current_image, current_transform)
+            current_vegetation = detect_vegetation_contours(current_image, current_transform)
+            current_water = detect_water_contours(current_image, current_transform)
+            current_built = detect_built_up_contours(current_image, current_transform)
+
+        # Run detection on past imagery
+        past_detections = detector.detect(past_image, past_transform)
+        past_vegetation = detect_vegetation_contours(past_image, past_transform)
+        past_water = detect_water_contours(past_image, past_transform)
+        past_built = detect_built_up_contours(past_image, past_transform)
 
     # Combine features for temporal comparison
     current_all_features = (
@@ -171,21 +191,27 @@ async def temporal_analysis(
 
     return {
         "scan_id": scan_id,
-        "current_layers": {
-            "detections": current_detections,
-            "vegetation": current_vegetation,
-            "water": current_water,
-            "built_up": current_built,
-        },
-        "past_layers": {
-            "detections": past_detections,
-            "vegetation": past_vegetation,
-            "water": past_water,
-            "built_up": past_built,
-        },
-        "growth_metrics": growth_metrics,
-        "current_bounds": current_result["bounds"],
-        "past_bounds": past_result["bounds"],
-        "current_image_base64": current_b64,
-        "past_image_base64": past_b64,
-    }
+            "current_layers": {
+                "detections": current_detections,
+                "vegetation": current_vegetation,
+                "water": current_water,
+                "built_up": current_built,
+            },
+            "past_layers": {
+                "detections": past_detections,
+                "vegetation": past_vegetation,
+                "water": past_water,
+                "built_up": past_built,
+            },
+            "growth_metrics": growth_metrics,
+            "current_bounds": current_result["bounds"],
+            "past_bounds": past_result["bounds"],
+            "current_image_base64": current_b64,
+            "past_image_base64": past_b64,
+        }
+    except Exception as e:
+        logger.error(f"Error in temporal_analysis: {e}", exc_info=True)
+        return {
+            "error": f"Temporal analysis failed: {str(e)}",
+            "scan_id": str(uuid.uuid4()),
+        }

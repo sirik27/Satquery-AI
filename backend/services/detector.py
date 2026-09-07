@@ -258,12 +258,12 @@ def detect_water_contours(image: np.ndarray, transform: dict) -> dict:
     water_mask = compute_water_mask(image)
 
     # Clean up
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     cleaned = cv2.morphologyEx(
         water_mask.astype(np.uint8) * 255, cv2.MORPH_CLOSE, kernel, iterations=2
     )
 
-    return vectorize_contours(cleaned > 0, transform, "water", min_area=300)
+    return vectorize_contours(cleaned > 0, transform, "water", min_area=100)
 
 
 def detect_built_up_contours(image: np.ndarray, transform: dict) -> dict:
