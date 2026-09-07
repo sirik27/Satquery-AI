@@ -136,7 +136,7 @@ def compute_water_mask(image: np.ndarray) -> np.ndarray:
     """
     Create a highly precise binary water mask supporting clear, deep, turbid, algae-covered,
     and dark lakes/ponds (like Wipro Lake).
-    Uses Visible Water Difference Index (VDWI = (g + b - 2*r) / (g + b + 2*r)) and absorption thresholding.
+    Uses Visible Water Difference Index (VDWI = (g + b - 2*r) / (g + b + 2*r)) and tree canopy suppression.
     """
     img = image.astype(np.float32)
     r, g, b = img[:, :, 0], img[:, :, 1], img[:, :, 2]
@@ -146,16 +146,13 @@ def compute_water_mask(image: np.ndarray) -> np.ndarray:
 
     # Visible Water Difference Index (VDWI)
     vdwi = (g + b - 2.0 * r) / (g + b + 2.0 * r + 1e-10)
-    blue_ratio = (b - r) / (b + r + 1e-10)
+    blue_diff = b - r
 
-    # Condition 1: Clear or blue water (high blue/vdwi)
-    clear_water = (vdwi > 0.04) & (brightness < 130) & (gli < 0.03)
+    # Dense tree canopy suppression (high GLI + strong green dominance over red & blue)
+    is_dense_tree = (gli > 0.15) & (g > r + 25.0) & (g > b + 20.0)
 
-    # Condition 2: Turbid / dark / algae lakes (like Wipro Lake)
-    # Red light absorbed (r < g and r <= b + 8), dark to moderate brightness, low vegetation GLI
-    dark_lake = (r < g) & (r <= b + 8) & (brightness < 95) & (gli < 0.03)
-
-    water_mask = clear_water | dark_lake
+    # Water condition: VDWI or blue dominance, moderate/low brightness, non-dense-tree
+    water_mask = ((vdwi > 0.02) | (blue_diff > 5.0)) & (brightness < 120.0) & (~is_dense_tree)
     return water_mask
 
 

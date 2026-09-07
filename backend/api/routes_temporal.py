@@ -1,9 +1,9 @@
 """
 Temporal Analysis Route — POST /api/v1/temporal-analysis
 
-Fetches 2021 and 2026 satellite imagery for the same bounding box,
+Fetches requested historical year (Wayback) and 2026 satellite imagery for the same bounding box,
 runs detection on both, and computes growth delta metrics.
-All values computed live from actual raster data.
+All values computed live from actual raster data. Zero mock data.
 """
 
 import base64
@@ -36,7 +36,6 @@ router = APIRouter()
 def _image_to_base64(image: np.ndarray, max_size: int = 800) -> str:
     """Convert numpy image to base64 JPEG string, resized for transfer."""
     img = Image.fromarray(image)
-    # Resize if too large
     if img.width > max_size or img.height > max_size:
         img.thumbnail((max_size, max_size), Image.LANCZOS)
     buffer = io.BytesIO()
@@ -118,79 +117,78 @@ async def temporal_analysis(
         past_water = detect_water_contours(past_image, past_transform)
         past_built = detect_built_up_contours(past_image, past_transform)
 
-    # Combine features for temporal comparison
-    current_all_features = (
-        current_detections.get("features", [])
-        + current_vegetation.get("features", [])
-        + current_water.get("features", [])
-        + current_built.get("features", [])
-    )
-    past_all_features = (
-        past_detections.get("features", [])
-        + past_vegetation.get("features", [])
-        + past_water.get("features", [])
-        + past_built.get("features", [])
-    )
+        # Combine features for temporal comparison
+        current_all_features = (
+            current_detections.get("features", [])
+            + current_vegetation.get("features", [])
+            + current_water.get("features", [])
+            + current_built.get("features", [])
+        )
+        past_all_features = (
+            past_detections.get("features", [])
+            + past_vegetation.get("features", [])
+            + past_water.get("features", [])
+            + past_built.get("features", [])
+        )
 
-    current_geojson = {"type": "FeatureCollection", "features": current_all_features}
-    past_geojson = {"type": "FeatureCollection", "features": past_all_features}
+        current_geojson = {"type": "FeatureCollection", "features": current_all_features}
+        past_geojson = {"type": "FeatureCollection", "features": past_all_features}
 
-    # Compute center latitude for GSD calculation
-    center_lat = (min_lat + max_lat) / 2.0
+        # Compute center latitude for GSD calculation
+        center_lat = (min_lat + max_lat) / 2.0
 
-    # Compute temporal diff metrics — all live from real data
-    growth_metrics = compute_temporal_diff(
-        current_geojson=current_geojson,
-        past_geojson=past_geojson,
-        current_image=current_image,
-        past_image=past_image,
-        zoom=zoom,
-        center_lat=center_lat,
-    )
+        # Compute temporal diff metrics — all live from real data
+        growth_metrics = compute_temporal_diff(
+            current_geojson=current_geojson,
+            past_geojson=past_geojson,
+            current_image=current_image,
+            past_image=past_image,
+            zoom=zoom,
+            center_lat=center_lat,
+        )
 
-    # Generate scan ID
-    scan_id = str(uuid.uuid4())
+        # Generate scan ID
+        scan_id = str(uuid.uuid4())
 
-    # Store in scan store for chat queries
-    scan_store = get_scan_store()
-    scan_store[scan_id] = {
-        "image": current_image,
-        "past_image": past_image,
-        "transform": current_transform,
-        "past_transform": past_transform,
-        "bounds": current_result["bounds"],
-        "past_bounds": past_result["bounds"],
-        "layers": {
-            "detections": current_detections,
-            "vegetation": current_vegetation,
-            "water": current_water,
-            "built_up": current_built,
-        },
-        "past_layers": {
-            "detections": past_detections,
-            "vegetation": past_vegetation,
-            "water": past_water,
-            "built_up": past_built,
-        },
-        "metrics": growth_metrics,
-        "zoom": zoom,
-        "vegetation_pct": compute_vegetation_percentage(current_image),
-        "temporal_metrics": growth_metrics,
-    }
-    scan_store["latest"] = scan_store[scan_id]
+        # Store in scan store for chat queries
+        scan_store[scan_id] = {
+            "image": current_image,
+            "past_image": past_image,
+            "transform": current_transform,
+            "past_transform": past_transform,
+            "bounds": current_result["bounds"],
+            "past_bounds": past_result["bounds"],
+            "layers": {
+                "detections": current_detections,
+                "vegetation": current_vegetation,
+                "water": current_water,
+                "built_up": current_built,
+            },
+            "past_layers": {
+                "detections": past_detections,
+                "vegetation": past_vegetation,
+                "water": past_water,
+                "built_up": past_built,
+            },
+            "metrics": growth_metrics,
+            "zoom": zoom,
+            "vegetation_pct": compute_vegetation_percentage(current_image),
+            "temporal_metrics": growth_metrics,
+        }
+        scan_store["latest"] = scan_store[scan_id]
 
-    # Save temporal analysis to database
-    growth_metrics["scan_id"] = scan_id
-    await save_temporal_analysis(growth_metrics)
+        # Save temporal analysis to database
+        growth_metrics["scan_id"] = scan_id
+        await save_temporal_analysis(growth_metrics)
 
-    # Generate preview images (base64 for frontend display)
-    current_b64 = _image_to_base64(current_image)
-    past_b64 = _image_to_base64(past_image)
+        # Generate preview images (base64 for frontend display)
+        current_b64 = _image_to_base64(current_image)
+        past_b64 = _image_to_base64(past_image)
 
-    logger.info(f"Temporal analysis complete: {scan_id}")
+        logger.info(f"Temporal analysis complete: {scan_id}")
 
-    return {
-        "scan_id": scan_id,
+        return {
+            "scan_id": scan_id,
             "current_layers": {
                 "detections": current_detections,
                 "vegetation": current_vegetation,
