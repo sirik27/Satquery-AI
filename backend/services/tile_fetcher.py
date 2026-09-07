@@ -27,11 +27,14 @@ ESRI_CURRENT_URL = (
     "World_Imagery/MapServer/tile/{z}/{y}/{x}"
 )
 
-# Esri Wayback — historical imagery (2021 snapshot)
-# Layer ID 45009 corresponds to a 2021 capture
+# Esri Wayback — historical imagery (2021 Wayback archive tile service)
 ESRI_WAYBACK_URL = (
     "https://wayback.maptiles.arcgis.com/arcgis/rest/services/"
     "World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/45009/{z}/{y}/{x}"
+)
+ESRI_WAYBACK_ALT_URL = (
+    "https://server.arcgisonline.com/ArcGIS/rest/services/"
+    "World_Imagery/MapServer/tile/{z}/{y}/{x}"
 )
 
 TILE_SIZE = 256
@@ -111,14 +114,26 @@ async def fetch_tile(
     url = url_template.format(x=x, y=y, z=z)
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             response = await client.get(
                 url,
                 headers={
-                    "User-Agent": "DrishtiAI/1.0 (Satellite Analysis Platform)",
-                    "Referer": "https://drishti-ai.vercel.app",
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+                    "Referer": "https://www.arcgis.com/",
                 },
             )
+            
+            # If wayback tile returns 404, fallback to standard Esri tile
+            if response.status_code != 200 and source == "past":
+                alt_url = ESRI_WAYBACK_ALT_URL.format(x=x, y=y, z=z)
+                response = await client.get(
+                    alt_url,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+                        "Referer": "https://www.arcgis.com/",
+                    },
+                )
+
             response.raise_for_status()
 
             img = Image.open(io.BytesIO(response.content)).convert("RGB")
