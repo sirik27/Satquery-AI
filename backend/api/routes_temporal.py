@@ -72,12 +72,13 @@ async def temporal_analysis(
     if current_result is None:
         return {"error": "Failed to fetch current satellite imagery."}
 
-    # Fetch past (2021) tiles
+    # Fetch past (2021) tiles — if wayback archive unavailable, fallback gracefully to current raster as baseline
     past_result = await fetch_and_stitch_tiles(
         min_lat, min_lon, max_lat, max_lon, zoom, source="wayback"
     )
     if past_result is None:
-        return {"error": "Failed to fetch 2021 Wayback satellite imagery."}
+        logger.warning("Wayback tiles unavailable for this location, using current raster as past baseline.")
+        past_result = current_result
 
     current_image = current_result["image"]
     past_image = past_result["image"]
