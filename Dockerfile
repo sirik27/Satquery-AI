@@ -1,12 +1,12 @@
 FROM python:3.11-slim
 
-# Install system dependencies for GDAL/rasterio
+# Install system dependencies for OpenCV and spatial libraries
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gdal-bin \
     libgdal-dev \
     libgeos-dev \
     libproj-dev \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     curl \
     && rm -rf /var/lib/apt/lists/*
