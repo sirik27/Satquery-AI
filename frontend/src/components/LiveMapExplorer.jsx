@@ -29,7 +29,7 @@ const LAYER_COLORS = {
 const HIGHLIGHT_COLOR = '#22d3ee';
 
 // Map event handler component
-function MapEventHandler({ onBoundsChange }) {
+function MapEventHandler({ onBoundsChange, onClickCoords }) {
   useMapEvents({
     moveend: (e) => {
       const map = e.target;
@@ -42,6 +42,11 @@ function MapEventHandler({ onBoundsChange }) {
         max_lon: bounds.getEast(),
         zoom,
       });
+    },
+    click: (e) => {
+      if (onClickCoords) {
+        onClickCoords({ lat: e.latlng.lat, lng: e.latlng.lng });
+      }
     },
   });
   return null;
@@ -96,6 +101,8 @@ export default function LiveMapExplorer({
   const [showSplit, setShowSplit] = useState(false);
   const [targetFeature, setTargetFeature] = useState(null);
   const mapRef = useRef(null);
+
+  const [clickedCoords, setClickedCoords] = useState(null);
 
   const handleBoundsChange = useCallback((bounds) => {
     setViewport(bounds);
@@ -199,8 +206,49 @@ export default function LiveMapExplorer({
           opacity={0.7}
         />
 
-        <MapEventHandler onBoundsChange={handleBoundsChange} />
+        <MapEventHandler onBoundsChange={handleBoundsChange} onClickCoords={setClickedCoords} />
         <FlyToFeature targetFeature={targetFeature} />
+
+        {/* Live Click Coordinate Badge */}
+        {clickedCoords && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 16,
+              left: 60,
+              zIndex: 1000,
+              background: 'rgba(15, 23, 42, 0.9)',
+              backdropFilter: 'blur(8px)',
+              border: '1px solid rgba(56, 189, 248, 0.4)',
+              color: '#38bdf8',
+              padding: '6px 14px',
+              borderRadius: '20px',
+              fontSize: '12px',
+              fontWeight: 600,
+              fontFamily: 'monospace',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <span>📍 {clickedCoords.lat.toFixed(6)}°N, {clickedCoords.lng.toFixed(6)}°E</span>
+            <button
+              onClick={() => setClickedCoords(null)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#94a3b8',
+                cursor: 'pointer',
+                fontSize: 14,
+                padding: 0,
+                lineHeight: 1,
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Render current layers */}
         {renderLayers(layers, 'current-')}

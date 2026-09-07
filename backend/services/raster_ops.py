@@ -134,28 +134,27 @@ def compute_vegetation_percentage(image: np.ndarray, threshold: float = 0.05) ->
 
 def compute_water_mask(image: np.ndarray) -> np.ndarray:
     """
-    Create a binary water mask using simple band ratio thresholding.
-    Water tends to have higher blue relative to green and red.
-
-    Water Index = (B - G) / (B + G + epsilon), where > threshold = water.
+    Create a binary water mask using adaptive band ratio and saturation analysis.
+    Water in satellite RGB has high blue/green ratio and low overall saturation/red.
     """
     img = image.astype(np.float32)
     r, g, b = img[:, :, 0], img[:, :, 1], img[:, :, 2]
 
-    # Normalized difference water indicator
-    ndwi_approx = (b - g) / (b + g + 1e-10)
-
-    # Water typically has low overall reflectance and higher blue
+    # Water ratio index
+    blue_ratio = (b - r) / (b + r + 1e-10)
+    green_ratio = (g - r) / (g + r + 1e-10)
     brightness = (r + g + b) / 3.0
-    water_mask = (ndwi_approx > 0.1) & (brightness < 120)
+
+    # Water has strong blue/green predominance and low brightness/reflectance
+    water_mask = (blue_ratio > 0.05) & (green_ratio > 0.0) & (brightness < 160)
 
     return water_mask
 
 
 def compute_built_up_mask(image: np.ndarray) -> np.ndarray:
     """
-    Create a binary built-up/concrete area mask.
-    Built-up areas tend to have high reflectance and low vegetation index.
+    Create a binary built-up/building mask.
+    Built-up areas (roofs, concrete, structures) have high variance, high brightness, and neutral color.
     """
     img = image.astype(np.float32)
     r, g, b = img[:, :, 0], img[:, :, 1], img[:, :, 2]
@@ -163,8 +162,8 @@ def compute_built_up_mask(image: np.ndarray) -> np.ndarray:
     brightness = (r + g + b) / 3.0
     gli = compute_gli(image)
 
-    # High brightness + low vegetation = likely built-up
-    built_mask = (brightness > 100) & (gli < 0.02) & (brightness < 240)
+    # Brightness above average and low vegetation GLI
+    built_mask = (brightness > 90) & (gli < 0.08) & (brightness < 245)
 
     return built_mask
 
