@@ -29,6 +29,11 @@ venv/
 ENV/
 env/
 
+# AI Model weights
+*.pt
+*.onnx
+*.engine
+
 # Frontend dependencies & builds
 frontend/node_modules/
 frontend/dist/
