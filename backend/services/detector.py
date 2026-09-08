@@ -139,21 +139,12 @@ def vectorize_contours(
     layer_name: str,
     min_area: int = 50,
     simplify_epsilon: float = 2.0,
+    as_bounding_box: bool = False,
 ) -> dict:
     """
     Convert a binary mask to GeoJSON polygons via OpenCV contour detection.
-
-    Args:
-        mask: Binary numpy array (True/1 = feature present)
-        transform: Affine transform for pixel→WGS84 conversion
-        layer_name: Name for the GeoJSON layer property
-        min_area: Minimum contour area in pixels to keep
-        simplify_epsilon: Douglas-Peucker simplification tolerance
-
-    Returns:
-        GeoJSON FeatureCollection — real polygons from actual image data
+    If as_bounding_box is True, returns bounding rectangle polygons (perfect for buildings).
     """
-    # Convert boolean mask to uint8 for OpenCV
     mask_uint8 = (mask.astype(np.uint8)) * 255
 
     contours, _ = cv2.findContours(
@@ -166,26 +157,33 @@ def vectorize_contours(
         if area < min_area:
             continue
 
-        # Simplify contour to reduce point count
-        simplified = cv2.approxPolyDP(contour, simplify_epsilon, True)
-
-        if len(simplified) < 3:
-            continue
-
-        # Convert pixel contour to WGS84 coordinates
-        coords = pixel_polygon_to_wgs84(simplified, transform)
-
-        if len(coords) < 4:  # Need at least 3 points + closing point
-            continue
-
-        # Compute centroid from pixel space
-        M = cv2.moments(contour)
-        if M["m00"] > 0:
-            cx = M["m10"] / M["m00"]
-            cy = M["m01"] / M["m00"]
+        if as_bounding_box:
+            # Generate clean 4-corner bounding rectangle box (square building footprint)
+            x, y, w, h = cv2.boundingRect(contour)
+            rect_contour = np.array([
+                [[x, y]],
+                [[x + w, y]],
+                [[x + w, y + h]],
+                [[x, y + h]]
+            ], dtype=np.int32)
+            coords = pixel_polygon_to_wgs84(rect_contour, transform)
+            cx, cy = x + w / 2.0, y + h / 2.0
             center_lat, center_lon = pixel_to_wgs84(cx, cy, transform)
         else:
-            center_lat, center_lon = 0.0, 0.0
+            simplified = cv2.approxPolyDP(contour, simplify_epsilon, True)
+            if len(simplified) < 3:
+                continue
+            coords = pixel_polygon_to_wgs84(simplified, transform)
+            M = cv2.moments(contour)
+            if M["m00"] > 0:
+                cx = M["m10"] / M["m00"]
+                cy = M["m01"] / M["m00"]
+                center_lat, center_lon = pixel_to_wgs84(cx, cy, transform)
+            else:
+                center_lat, center_lon = 0.0, 0.0
+
+        if len(coords) < 4:
+            continue
 
         feature = {
             "type": "Feature",
@@ -196,7 +194,6 @@ def vectorize_contours(
                 "perimeter_pixels": float(cv2.arcLength(contour, True)),
                 "center_lat": center_lat,
                 "center_lon": center_lon,
-                "vertex_count": len(simplified),
             },
             "geometry": {
                 "type": "Polygon",
@@ -218,29 +215,31 @@ def detect_roads_contours(image: np.ndarray, transform: dict) -> dict:
     Detect main road networks using high-confidence asphalt spectral signature & edge linking.
     Filters out micro-noise fragments to accurately find primary roads.
     """
-    h, w = image.shape[:2]
     gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
     hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
 
     # Spectral Asphalt signature (low saturation, mid-gray brightness)
     saturation = hsv[:, :, 1]
     value = hsv[:, :, 2]
-    road_spectral = ((saturation < 35) & (value > 70) & (value < 180)).astype(np.uint8) * 255
+    road_spectral = ((saturation < 40) & (value > 60) & (value < 190)).astype(np.uint8) * 255
 
     # Canny Edge detection focused on continuous linear edges
-    edges = cv2.Canny(gray, 50, 150)
-    kernel_rect = cv2.getStructuringElement(cv2.MORPH_RECT, (11, 11))
+    edges = cv2.Canny(gray, 40, 140)
+    kernel_rect = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
     edges_linked = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel_rect, iterations=2)
 
+    # Dilate slightly to form continuous road strips
+    dilate_k = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    edges_thick = cv2.dilate(edges_linked, dilate_k, iterations=1)
+
     # Combine spectral road pixels with linked edge boundaries
-    combined = cv2.bitwise_and(road_spectral, edges_linked)
+    combined = cv2.bitwise_or(road_spectral, edges_thick)
 
     # Clean small isolated noise artifacts
-    clean_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    clean_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     cleaned = cv2.morphologyEx(combined, cv2.MORPH_OPEN, clean_kernel, iterations=1)
 
-    # Filter out micro-fragments (only keep major road segments > 350 sq pixels)
-    return vectorize_contours(cleaned > 0, transform, "roads", min_area=350)
+    return vectorize_contours(cleaned > 0, transform, "roads", min_area=250)
 
 
 def detect_vegetation_contours(image: np.ndarray, transform: dict) -> dict:
@@ -263,7 +262,7 @@ def detect_vegetation_contours(image: np.ndarray, transform: dict) -> dict:
 def detect_water_contours(image: np.ndarray, transform: dict) -> dict:
     """
     Detect water bodies using spectral analysis.
-    Returns GeoJSON FeatureCollection of water polygons.
+    Explicitly excludes building shadows.
     """
     water_mask = compute_water_mask(image)
 
@@ -273,13 +272,12 @@ def detect_water_contours(image: np.ndarray, transform: dict) -> dict:
         water_mask.astype(np.uint8) * 255, cv2.MORPH_CLOSE, kernel, iterations=2
     )
 
-    return vectorize_contours(cleaned > 0, transform, "water", min_area=100)
+    return vectorize_contours(cleaned > 0, transform, "water", min_area=300)
 
 
 def detect_built_up_contours(image: np.ndarray, transform: dict) -> dict:
     """
-    Detect built-up/concrete areas using spectral analysis.
-    Returns GeoJSON FeatureCollection of built-up polygons.
+    Detect built-up/concrete structures and represent them as clean rectangular bounding box squares.
     """
     built_mask = compute_built_up_mask(image)
 
@@ -288,7 +286,7 @@ def detect_built_up_contours(image: np.ndarray, transform: dict) -> dict:
         built_mask.astype(np.uint8) * 255, cv2.MORPH_CLOSE, kernel
     )
 
-    return vectorize_contours(cleaned > 0, transform, "built_up", min_area=200)
+    return vectorize_contours(cleaned > 0, transform, "built_up", min_area=150, as_bounding_box=True)
 
 
 @lru_cache()
