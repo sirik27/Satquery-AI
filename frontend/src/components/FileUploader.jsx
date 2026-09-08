@@ -12,6 +12,7 @@ export default function FileUploader({ isOpen, onClose, onUpload }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [errorMessage, setErrorMessage] = useState(null);
   const inputRef = useRef(null);
 
   if (!isOpen) return null;
@@ -35,34 +36,47 @@ export default function FileUploader({ isOpen, onClose, onUpload }) {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
+    setErrorMessage(null);
 
     const file = e.dataTransfer.files?.[0];
     if (file && validateFile(file)) {
+      console.log('[FileUploader] File selected via drop:', file.name, file.size, file.type);
       setSelectedFile(file);
+    } else if (file) {
+      setErrorMessage(`Unsupported file format (${file.name}). Allowed: ${ALLOWED_TYPES.join(', ')}`);
     }
   };
 
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
+    setErrorMessage(null);
     if (file && validateFile(file)) {
+      console.log('[FileUploader] File selected via input:', file.name, file.size, file.type);
       setSelectedFile(file);
+    } else if (file) {
+      setErrorMessage(`Unsupported file format (${file.name}). Allowed: ${ALLOWED_TYPES.join(', ')}`);
     }
   };
 
   const handleUpload = async () => {
     if (!selectedFile) return;
 
+    console.log('[FileUploader] Initiating upload for file:', selectedFile.name);
     setUploading(true);
     setProgress(10);
+    setErrorMessage(null);
 
+    let progressInterval = null;
     try {
-      // Simulate progress during upload
-      const progressInterval = setInterval(() => {
-        setProgress((prev) => Math.min(prev + 10, 80));
-      }, 500);
+      progressInterval = setInterval(() => {
+        setProgress((prev) => Math.min(prev + 10, 85));
+      }, 400);
 
+      console.log('[FileUploader] Dispatching onUpload to API handler...');
       await onUpload(selectedFile);
-      clearInterval(progressInterval);
+
+      console.log('[FileUploader] Upload and analysis successfully completed!');
+      if (progressInterval) clearInterval(progressInterval);
       setProgress(100);
 
       setTimeout(() => {
@@ -70,11 +84,14 @@ export default function FileUploader({ isOpen, onClose, onUpload }) {
         setProgress(0);
         setUploading(false);
         onClose();
-      }, 800);
+      }, 500);
     } catch (err) {
-      console.error('Upload failed:', err);
+      console.error('[FileUploader] Upload & Analysis failed:', err);
+      if (progressInterval) clearInterval(progressInterval);
       setUploading(false);
       setProgress(0);
+      const msg = err.response?.data?.detail || err.message || 'Upload failed. Please check network/backend connection.';
+      setErrorMessage(`Error analyzing image: ${msg}`);
     }
   };
 
@@ -85,11 +102,11 @@ export default function FileUploader({ isOpen, onClose, onUpload }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose} id="upload-modal">
+    <div className="modal-overlay" onClick={() => !uploading && onClose()} id="upload-modal">
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>Upload Satellite Image</h2>
-          <button className="btn btn-ghost btn-icon" onClick={onClose}>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} disabled={uploading}>
             <X size={18} />
           </button>
         </div>
@@ -101,7 +118,7 @@ export default function FileUploader({ isOpen, onClose, onUpload }) {
             onDragLeave={handleDrag}
             onDragOver={handleDrag}
             onDrop={handleDrop}
-            onClick={() => inputRef.current?.click()}
+            onClick={() => !uploading && inputRef.current?.click()}
           >
             <input
               ref={inputRef}
@@ -109,6 +126,7 @@ export default function FileUploader({ isOpen, onClose, onUpload }) {
               accept=".tif,.tiff,.png,.jpg,.jpeg"
               onChange={handleFileSelect}
               style={{ display: 'none' }}
+              disabled={uploading}
             />
             {selectedFile ? (
               <div>
@@ -129,12 +147,23 @@ export default function FileUploader({ isOpen, onClose, onUpload }) {
             )}
           </div>
 
+          {errorMessage && (
+            <div style={{
+              marginTop: 12, padding: '10px 14px', borderRadius: 8,
+              background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.4)',
+              color: '#fca5a5', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8
+            }}>
+              <span>⚠️</span>
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
           {uploading && (
             <div style={{ marginTop: 16 }}>
               <div
                 style={{
                   height: 4,
-                  background: '#e2e8f0',
+                  background: '#334155',
                   borderRadius: 2,
                   overflow: 'hidden',
                 }}
@@ -149,15 +178,15 @@ export default function FileUploader({ isOpen, onClose, onUpload }) {
                   }}
                 />
               </div>
-              <p style={{ fontSize: 12, color: '#64748b', marginTop: 6, textAlign: 'center' }}>
-                {progress < 100 ? 'Uploading and analyzing...' : 'Complete!'}
+              <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 6, textAlign: 'center' }}>
+                {progress < 100 ? 'Uploading and analyzing features...' : 'Analysis complete!'}
               </p>
             </div>
           )}
         </div>
 
         <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose}>
+          <button className="btn btn-secondary" onClick={onClose} disabled={uploading}>
             Cancel
           </button>
           <button
