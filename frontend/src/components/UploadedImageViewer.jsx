@@ -75,14 +75,22 @@ export default function UploadedImageViewer({
       let x = pt[0];
       let y = pt[1];
 
-      // If coordinates are geographic (WGS84 lat/lon) instead of raw pixels:
-      if (uploadedImage?.bounds && Math.abs(x) <= 180 && Math.abs(y) <= 90) {
+      if (uploadedImage?.bounds) {
         const [minLat, minLon, maxLat, maxLon] = uploadedImage.bounds;
-        const lon = x;
-        const lat = y;
-        x = ((lon - minLon) / (maxLon - minLon)) * imgWidth;
-        y = ((maxLat - lat) / (maxLat - minLat)) * imgHeight;
+        if (minLon === 0.0 && maxLon === 1.0) {
+          // Synthetic normalized transform: x is [0..1] ratio, y is [-1..0] ratio
+          return [x * imgWidth, Math.abs(y) * imgHeight];
+        } else if (Math.abs(x) <= 180 && Math.abs(y) <= 90) {
+          // Genuine WGS84 lat/lon bounds mapping
+          const lon = x;
+          const lat = y;
+          const px = ((lon - minLon) / (maxLon - minLon)) * imgWidth;
+          const py = ((maxLat - lat) / (maxLat - minLat)) * imgHeight;
+          return [px, py];
+        }
       }
+
+      // Direct pixel coordinates fallback
       return [x, y];
     };
 

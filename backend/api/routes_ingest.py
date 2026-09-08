@@ -179,13 +179,17 @@ async def upload_file(
     image_base64 = base64.b64encode(buf.getvalue()).decode("utf-8")
 
     bounds = None
-    if transform and transform.get("origin_lon") != 0.0 and transform.get("origin_lat") != 0.0:
-        # Genuine geospatial bounds
-        min_lon = transform["origin_lon"]
-        max_lat = transform["origin_lat"]
-        max_lon = min_lon + transform["pixel_width"] * transform["width"]
-        min_lat = max_lat + transform["pixel_height"] * transform["height"]
-        bounds = [min_lat, min_lon, max_lat, max_lon]
+    if transform:
+        if transform.get("origin_lon") != 0.0 or transform.get("origin_lat") != 0.0:
+            # Genuine geospatial bounds (WGS84)
+            min_lon = transform["origin_lon"]
+            max_lat = transform["origin_lat"]
+            max_lon = min_lon + transform["pixel_width"] * transform["width"]
+            min_lat = max_lat + transform["pixel_height"] * transform["height"]
+            bounds = [min_lat, min_lon, max_lat, max_lon]
+        else:
+            # Synthetic transform bounds (0..1 normalized pixel space)
+            bounds = [-1.0, 0.0, 0.0, 1.0]
 
     # Store in scan store for chat
     from backend.api.routes_analysis import _scan_store
