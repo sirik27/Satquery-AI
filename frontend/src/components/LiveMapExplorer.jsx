@@ -198,11 +198,11 @@ export default function LiveMapExplorer({
     const layer = feature.properties?.layer || 'detections';
     const isHighlighted = highlightFeatureIds?.includes(feature.id);
     return {
-      color: isHighlighted ? HIGHLIGHT_COLOR : LAYER_COLORS[layer] || '#ef4444',
-      weight: isHighlighted ? 4 : 2,
-      fillOpacity: isHighlighted ? 0.5 : 0.2,
-      opacity: 0.9,
-      dashArray: layer === 'roads' ? '5, 5' : null,
+      color: isHighlighted ? HIGHLIGHT_COLOR : layer === 'built_up' ? '#ef4444' : LAYER_COLORS[layer] || '#ef4444',
+      weight: isHighlighted ? 4 : layer === 'built_up' ? 2.5 : layer === 'roads' ? 3 : 2,
+      fillOpacity: isHighlighted ? 0.6 : layer === 'built_up' ? 0.15 : 0.25,
+      opacity: 0.95,
+      dashArray: layer === 'roads' ? '6, 3' : null,
     };
   };
 

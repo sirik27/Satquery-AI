@@ -86,9 +86,20 @@ export default function UploadedImageViewer({
       return [x, y];
     };
 
-    // Handle polygon vs linestring
+    // Handle polygon vs linestring vs bounding box
     let pathD = '';
-    if (feature.geometry.type === 'Polygon' || feature.geometry.type === 'MultiPolygon') {
+    if (layerName === 'built_up' || layerName === 'detections') {
+      // Draw rectangular bounding box squares for buildings/structures (red/purple outline like reference image)
+      const allPts = (feature.geometry.type === 'Polygon' ? coords[0] : coords).map(mapPointToPixel);
+      const xs = allPts.map(p => p[0]);
+      const ys = allPts.map(p => p[1]);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+
+      pathD = `M ${minX} ${minY} L ${maxX} ${minY} L ${maxX} ${maxY} L ${minX} ${maxY} Z`;
+    } else if (feature.geometry.type === 'Polygon' || feature.geometry.type === 'MultiPolygon') {
       const rings = feature.geometry.type === 'Polygon' ? [coords[0]] : coords.map(c => c[0]);
       pathD = rings.map(ring => {
         return ring.map((pt, idx) => {
@@ -103,14 +114,16 @@ export default function UploadedImageViewer({
       }).join(' ');
     }
 
+    const stroke = layerName === 'built_up' ? '#ef4444' : strokeColor;
+
     return (
       <path
         key={feature.id}
         d={pathD}
-        fill={strokeColor}
-        fillOpacity={layerName === 'roads' ? 0.2 : isHighlighted ? 0.6 : 0.3}
-        stroke={strokeColor}
-        strokeWidth={isHighlighted ? 4 : layerName === 'roads' ? 3 : 2}
+        fill={layerName === 'built_up' ? 'rgba(239, 68, 68, 0.15)' : strokeColor}
+        fillOpacity={layerName === 'roads' ? 0.1 : isHighlighted ? 0.6 : 0.2}
+        stroke={stroke}
+        strokeWidth={isHighlighted ? 4 : layerName === 'built_up' ? 2.5 : layerName === 'roads' ? 3 : 2}
         strokeDasharray={layerName === 'roads' ? '6,3' : undefined}
         style={{ cursor: 'pointer', transition: 'all 0.15s ease' }}
         onClick={(e) => {
