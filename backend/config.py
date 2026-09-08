@@ -4,18 +4,24 @@ All paths use pathlib.Path for Windows/macOS compatibility.
 """
 
 import sys
-import torch
+import logging
 from pathlib import Path
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
+logger = logging.getLogger("drishti.config")
+
 
 def detect_device() -> str:
     """Select optimal compute device: MPS (Apple Silicon) > CUDA (NVIDIA) > CPU."""
-    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        return "mps"
-    if torch.cuda.is_available():
-        return "cuda"
+    try:
+        import torch
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return "mps"
+        if torch.cuda.is_available():
+            return "cuda"
+    except ImportError:
+        logger.warning("torch not found — defaulting to CPU device")
     return "cpu"
 
 

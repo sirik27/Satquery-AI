@@ -215,22 +215,38 @@ def vectorize_contours(
 
 def detect_roads_contours(image: np.ndarray, transform: dict) -> dict:
     """
-    Detect road-like features using edge detection and morphological operations.
+    Detect road-like features using spectral + structural analysis.
+    Combines gray-pixel (asphalt) detection with edge-based line detection
+    and aggressive morphological linking to capture full road networks.
     Returns GeoJSON FeatureCollection of road contours.
     """
     gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
 
-    # Edge detection
-    edges = cv2.Canny(gray, 50, 150)
+    # --- Approach 1: Spectral — roads are gray, low-saturation pixels ---
+    saturation = hsv[:, :, 1]
+    value = hsv[:, :, 2]
+    # Roads: low saturation (< 50), medium brightness (60-200)
+    road_spectral = ((saturation < 50) & (value > 60) & (value < 200)).astype(np.uint8) * 255
 
-    # Morphological close to connect road segments
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-    closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel, iterations=2)
+    # --- Approach 2: Edge-based with strong morphological linking ---
+    edges = cv2.Canny(gray, 30, 120)
+    # Use a large rectangular kernel to connect road edge fragments
+    link_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+    edges_closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, link_kernel, iterations=3)
+    # Dilate to thicken
+    dilate_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
+    edges_thick = cv2.dilate(edges_closed, dilate_kernel, iterations=2)
 
-    # Dilate to thicken road lines
-    dilated = cv2.dilate(closed, kernel, iterations=1)
+    # --- Combine both masks ---
+    combined = cv2.bitwise_or(road_spectral, edges_thick)
 
-    return vectorize_contours(dilated > 0, transform, "roads", min_area=100)
+    # Clean: open to remove noise, then close to fill gaps
+    clean_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    cleaned = cv2.morphologyEx(combined, cv2.MORPH_OPEN, clean_kernel, iterations=1)
+    cleaned = cv2.morphologyEx(cleaned, cv2.MORPH_CLOSE, link_kernel, iterations=2)
+
+    return vectorize_contours(cleaned > 0, transform, "roads", min_area=50)
 
 
 def detect_vegetation_contours(image: np.ndarray, transform: dict) -> dict:

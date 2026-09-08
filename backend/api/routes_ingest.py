@@ -171,13 +171,29 @@ async def upload_file(
         "image_stats": stats,
     }
 
+    # Encode image to base64 JPEG for display on frontend
+    import base64
+    pil_img = Image.fromarray(image)
+    buf = io.BytesIO()
+    pil_img.save(buf, format="JPEG", quality=85)
+    image_base64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+    bounds = None
+    if transform and transform.get("origin_lon") != 0.0 and transform.get("origin_lat") != 0.0:
+        # Genuine geospatial bounds
+        min_lon = transform["origin_lon"]
+        max_lat = transform["origin_lat"]
+        max_lon = min_lon + transform["pixel_width"] * transform["width"]
+        min_lat = max_lat + transform["pixel_height"] * transform["height"]
+        bounds = [min_lat, min_lon, max_lat, max_lon]
+
     # Store in scan store for chat
     from backend.api.routes_analysis import _scan_store
     scan_id = upload_id
     _scan_store[scan_id] = {
         "image": image,
         "transform": transform,
-        "bounds": None,
+        "bounds": bounds,
         "layers": layers,
         "metrics": metrics,
         "zoom": 15,
@@ -200,4 +216,7 @@ async def upload_file(
         "resolution": resolution,
         "layers": layers,
         "metrics": metrics,
+        "image_base64": image_base64,
+        "bounds": bounds,
     }
+

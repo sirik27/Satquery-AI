@@ -1,3 +1,4 @@
+
 /**
  * Firebase Configuration — App, Auth, and Firestore initialization.
  * Reads config from VITE_FIREBASE_* environment variables.

@@ -21,6 +21,7 @@ import GrowthHUD from '../components/GrowthHUD';
 import FileUploader from '../components/FileUploader';
 import GroundedChatbot from '../components/GroundedChatbot';
 import AnalyticsView from '../components/AnalyticsView';
+import UploadedImageViewer from '../components/UploadedImageViewer';
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
@@ -110,6 +111,8 @@ export default function Dashboard() {
   }, []);
 
   // Handle file upload
+  const [uploadedImage, setUploadedImage] = useState(null);
+
   const handleUpload = useCallback(async (file) => {
     const response = await api.uploadFile(file);
     const data = response.data;
@@ -117,6 +120,17 @@ export default function Dashboard() {
     setScanId(data.scan_id);
     setLayers(data.layers);
     setMetrics(data.metrics);
+    setUploadedImage({
+      filename: data.filename,
+      imageBase64: data.image_base64,
+      imageSize: data.image_size,
+      crs: data.crs,
+      resolution: data.resolution,
+      bounds: data.bounds,
+      metrics: data.metrics,
+      layers: data.layers,
+    });
+    setActiveNav('uploaded-analysis');
   }, []);
 
   // Handle PDF export
@@ -162,6 +176,7 @@ export default function Dashboard() {
 
   const navItems = [
     { key: 'explorer', icon: Map, label: 'Map Explorer' },
+    ...(uploadedImage ? [{ key: 'uploaded-analysis', icon: Satellite, label: 'Uploaded Image' }] : []),
     { key: 'analytics', icon: BarChart3, label: 'Analytics' },
     { key: 'chat', icon: MessageSquare, label: 'AI Assistant' },
     { key: 'upload', icon: Upload, label: 'Upload Image' },
@@ -232,9 +247,15 @@ export default function Dashboard() {
         {/* Growth HUD */}
         <GrowthHUD metrics={metrics} temporalMetrics={temporalMetrics} />
 
-        {/* Content Views: Map Explorer vs Analytics */}
+        {/* Content Views: Map Explorer vs Analytics vs Uploaded Image */}
         {activeNav === 'analytics' ? (
           <AnalyticsView metrics={metrics} temporalMetrics={temporalMetrics} />
+        ) : activeNav === 'uploaded-analysis' ? (
+          <UploadedImageViewer
+            uploadedImage={uploadedImage}
+            visibleLayers={visibleLayers}
+            onToggleLayer={handleToggleLayer}
+          />
         ) : (
           <LiveMapExplorer
             layers={layers}
