@@ -217,36 +217,45 @@ def detect_roads_contours(image: np.ndarray, transform: dict) -> dict:
     """
     Detect road-like features using spectral + structural analysis.
     Combines gray-pixel (asphalt) detection with edge-based line detection
-    and aggressive morphological linking to capture full road networks.
+    and morphological linking to capture road networks quickly.
     Returns GeoJSON FeatureCollection of road contours.
     """
-    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-    hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+    h, w = image.shape[:2]
+    # Resize large images for super fast processing if needed
+    scale = 1.0
+    if max(h, w) > 1024:
+        scale = 1024.0 / max(h, w)
+        proc_image = cv2.resize(image, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+    else:
+        proc_image = image
+
+    gray = cv2.cvtColor(proc_image, cv2.COLOR_RGB2GRAY)
+    hsv = cv2.cvtColor(proc_image, cv2.COLOR_RGB2HSV)
 
     # --- Approach 1: Spectral — roads are gray, low-saturation pixels ---
     saturation = hsv[:, :, 1]
     value = hsv[:, :, 2]
-    # Roads: low saturation (< 50), medium brightness (60-200)
     road_spectral = ((saturation < 50) & (value > 60) & (value < 200)).astype(np.uint8) * 255
 
-    # --- Approach 2: Edge-based with strong morphological linking ---
-    edges = cv2.Canny(gray, 30, 120)
-    # Use a large rectangular kernel to connect road edge fragments
-    link_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
-    edges_closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, link_kernel, iterations=3)
-    # Dilate to thicken
-    dilate_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
-    edges_thick = cv2.dilate(edges_closed, dilate_kernel, iterations=2)
+    # --- Approach 2: Edge-based with morphological linking ---
+    edges = cv2.Canny(gray, 40, 120)
+    link_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
+    edges_closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, link_kernel, iterations=1)
+    dilate_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    edges_thick = cv2.dilate(edges_closed, dilate_kernel, iterations=1)
 
     # --- Combine both masks ---
     combined = cv2.bitwise_or(road_spectral, edges_thick)
-
-    # Clean: open to remove noise, then close to fill gaps
-    clean_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    clean_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     cleaned = cv2.morphologyEx(combined, cv2.MORPH_OPEN, clean_kernel, iterations=1)
-    cleaned = cv2.morphologyEx(cleaned, cv2.MORPH_CLOSE, link_kernel, iterations=2)
 
-    return vectorize_contours(cleaned > 0, transform, "roads", min_area=50)
+    # Adjust transform scale if downsampled
+    proc_transform = dict(transform)
+    if scale != 1.0:
+        proc_transform["pixel_width"] = transform["pixel_width"] / scale
+        proc_transform["pixel_height"] = transform["pixel_height"] / scale
+
+    return vectorize_contours(cleaned > 0, proc_transform, "roads", min_area=int(30 * scale))
 
 
 def detect_vegetation_contours(image: np.ndarray, transform: dict) -> dict:
