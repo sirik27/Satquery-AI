@@ -61,7 +61,7 @@ export default function UploadedImageViewer({
     setPan({ x: 0, y: 0 });
   };
 
-  // Convert feature coordinates (pixel coords) to SVG path strings
+  // Convert feature coordinates to SVG path strings
   const renderFeaturePath = (feature, key) => {
     const coords = feature.geometry?.coordinates;
     if (!coords || !coords.length) return null;
@@ -70,15 +70,37 @@ export default function UploadedImageViewer({
     const isHighlighted = selectedFeature?.id === feature.id;
     const strokeColor = isHighlighted ? '#22d3ee' : LAYER_COLORS[layerName] || '#ef4444';
 
+    // Helper to map a coordinate pair to image pixel [x, y]
+    const mapPointToPixel = (pt) => {
+      let x = pt[0];
+      let y = pt[1];
+
+      // If coordinates are geographic (WGS84 lat/lon) instead of raw pixels:
+      if (uploadedImage?.bounds && Math.abs(x) <= 180 && Math.abs(y) <= 90) {
+        const [minLat, minLon, maxLat, maxLon] = uploadedImage.bounds;
+        const lon = x;
+        const lat = y;
+        x = ((lon - minLon) / (maxLon - minLon)) * imgWidth;
+        y = ((maxLat - lat) / (maxLat - minLat)) * imgHeight;
+      }
+      return [x, y];
+    };
+
     // Handle polygon vs linestring
     let pathD = '';
     if (feature.geometry.type === 'Polygon' || feature.geometry.type === 'MultiPolygon') {
       const rings = feature.geometry.type === 'Polygon' ? [coords[0]] : coords.map(c => c[0]);
       pathD = rings.map(ring => {
-        return ring.map(([x, y], idx) => `${idx === 0 ? 'M' : 'L'} ${x} ${y}`).join(' ') + ' Z';
+        return ring.map((pt, idx) => {
+          const [x, y] = mapPointToPixel(pt);
+          return `${idx === 0 ? 'M' : 'L'} ${x} ${y}`;
+        }).join(' ') + ' Z';
       }).join(' ');
     } else if (feature.geometry.type === 'LineString') {
-      pathD = coords.map(([x, y], idx) => `${idx === 0 ? 'M' : 'L'} ${x} ${y}`).join(' ');
+      pathD = coords.map((pt, idx) => {
+        const [x, y] = mapPointToPixel(pt);
+        return `${idx === 0 ? 'M' : 'L'} ${x} ${y}`;
+      }).join(' ');
     }
 
     return (
@@ -86,10 +108,10 @@ export default function UploadedImageViewer({
         key={feature.id}
         d={pathD}
         fill={strokeColor}
-        fillOpacity={layerName === 'roads' ? 0 : isHighlighted ? 0.6 : 0.25}
+        fillOpacity={layerName === 'roads' ? 0.2 : isHighlighted ? 0.6 : 0.3}
         stroke={strokeColor}
-        strokeWidth={isHighlighted ? 4 / zoom : 2 / zoom}
-        strokeDasharray={layerName === 'roads' ? '4,4' : undefined}
+        strokeWidth={isHighlighted ? 4 : layerName === 'roads' ? 3 : 2}
+        strokeDasharray={layerName === 'roads' ? '6,3' : undefined}
         style={{ cursor: 'pointer', transition: 'all 0.15s ease' }}
         onClick={(e) => {
           e.stopPropagation();
